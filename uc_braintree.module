@@ -1,0 +1,101 @@
+<?php
+// $Id: uc_braintree.module
+require_once 'braintree/lib/Braintree.php';
+
+function uc_braintree_payment_gateway() {
+  $gateways[] = array(
+    'id' => 'uc_braintree',
+    'title' => t('Braintree'),
+    'description' => t('Process credit card payments through Braintree.'),
+    'settings' => 'uc_braintree_settings_form',
+    'credit' => 'uc_braintree_charge',
+  );
+
+  return $gateways;
+}
+
+/*
+ * Implementation of hook_settings_form
+ */
+function uc_braintree_settings_form() {
+  $form['api_id_key'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('API Keys'),
+    '#description' => t('This information is required for Ubercart to interact with your payment gateway account.  You can access your API keys on your Braintree control panel'),
+  );
+  $form['api_id_key']['uc_braintree_merchant_id'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Merchant ID'),
+    '#description' => t('Your Braintree merchant ID'),
+    '#default_value' => variable_get('uc_braintree_merchant_id', ''),
+  );
+  $form['api_id_key']['uc_braintree_public_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Public Key'),
+    '#description' => t('Your Braintree public key'),
+    '#default_value' => variable_get('uc_braintree_public_key', ''),
+  );
+  $form['api_id_key']['uc_braintree_private_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Private Key'),
+    '#description' => t('Your Braintree private key'),
+    '#default_value' => variable_get('uc_braintree_private_key', ''),
+  );
+  
+  return $form;
+}
+
+/*
+ * Implementation of hook_charge
+ */
+function uc_braintree_charge($order_id, $amount, $data) {
+  Braintree_Configuration::environment('sandbox');
+  Braintree_Configuration::merchantId( variable_get('uc_braintree_merchant_id','') );
+  Braintree_Configuration::publicKey( variable_get('uc_braintree_public_key','') );
+  Braintree_Configuration::privateKey( variable_get('uc_braintree_private_key','') );
+  
+  global $user;
+  
+  // Load the order
+  $order = uc_order_load($order_id);
+
+  // Create a Braintree transaction and submit information to create a payment
+  $response = Braintree_Transaction::sale(array(
+      'amount' => $amount,
+      'creditCard' => array(
+          'number' => $order->payment_details['cc_number'],
+          'expirationDate' => $order->payment_details['cc_exp_month'] . "/" . $order->payment_details['cc_exp_year'],
+          'cardholderName' => 'The Cardholder',
+          'cvv' => $order->payment_details['cc_cvv']
+      )
+  ));
+  
+  $success = $response->success;
+
+  // If payment was successful, add comment
+  if ($success) {
+    $context = array(
+      'revision' => 'formatted-original',
+      'type' => 'amount',
+    );
+    $message = t('Credit card charged: !amount', array('!amount' => uc_price($amount, $context)));
+    uc_order_comment_save($order_id, $user->uid, $message, 'admin');
+  }
+
+  // Output appopriate error if credit card invalid
+  else {
+    $message = t('Credit card charge failed.');
+    uc_order_comment_save($order_id, $user->uid, $message, 'admin');
+  }
+
+  // Return result to have payment or error recorded
+  $result = array(
+    'success' => $success,
+    'comment' => t('Card charged'),
+    'message' => $success ? t('Credit card payment processed successfully.') : t('Credit card charge failed.'),
+    'uid' => $user->uid,
+    // 'data' => $data,
+  );
+
+  return $result;
+}

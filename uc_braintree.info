@@ -1,0 +1,9 @@
+; $Id: uc_braintree.info
+name = Braintree Gateway
+description = Process payments using Braintree
+dependencies[] = uc_payment
+dependencies[] = uc_credit
+package = Ubercart - payment
+core = 6.x
+php = 5.0
+
