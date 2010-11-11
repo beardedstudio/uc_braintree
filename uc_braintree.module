@@ -18,24 +18,31 @@ function uc_braintree_payment_gateway() {
  * Implementation of hook_settings_form
  */
 function uc_braintree_settings_form() {
-  $form['api_id_key'] = array(
+  $form['uc_braintree_environemnt'] = array(
+    '#type' => 'select',
+    '#title' => t('Environment'),
+    '#default_value' => variable_get('uc_braintree_environemnt', 'sandbox'),
+    '#options' => drupal_map_assoc(array('sandbox','production')),
+  );
+  
+  $form['braintree_keys'] = array(
     '#type' => 'fieldset',
     '#title' => t('API Keys'),
     '#description' => t('This information is required for Ubercart to interact with your payment gateway account.  You can access your API keys on your Braintree control panel'),
   );
-  $form['api_id_key']['uc_braintree_merchant_id'] = array(
+  $form['braintree_keys']['uc_braintree_merchant_id'] = array(
     '#type' => 'textfield',
     '#title' => t('Merchant ID'),
     '#description' => t('Your Braintree merchant ID'),
     '#default_value' => variable_get('uc_braintree_merchant_id', ''),
   );
-  $form['api_id_key']['uc_braintree_public_key'] = array(
+  $form['braintree_keys']['uc_braintree_public_key'] = array(
     '#type' => 'textfield',
     '#title' => t('Public Key'),
     '#description' => t('Your Braintree public key'),
     '#default_value' => variable_get('uc_braintree_public_key', ''),
   );
-  $form['api_id_key']['uc_braintree_private_key'] = array(
+  $form['braintree_keys']['uc_braintree_private_key'] = array(
     '#type' => 'textfield',
     '#title' => t('Private Key'),
     '#description' => t('Your Braintree private key'),
@@ -48,15 +55,20 @@ function uc_braintree_settings_form() {
 /*
  * Implementation of hook_charge
  */
-function uc_braintree_charge($order_id, $amount, $data) {
-  Braintree_Configuration::environment('sandbox');
-  Braintree_Configuration::merchantId( variable_get('uc_braintree_merchant_id','') );
-  Braintree_Configuration::publicKey( variable_get('uc_braintree_public_key','') );
-  Braintree_Configuration::privateKey( variable_get('uc_braintree_private_key','') );
+function uc_braintree_charge($order_id, $amount, $data) {  
+  // Check for existence of configuration variables on charge
+  try {
+    Braintree_Configuration::environment( variable_get('uc_braintree_environemnt', 'sandbox') );
+    Braintree_Configuration::merchantId( variable_get('uc_braintree_merchant_id','') );
+    Braintree_Configuration::publicKey( variable_get('uc_braintree_public_key','') );
+    Braintree_Configuration::privateKey( variable_get('uc_braintree_private_key','') );    
+  } catch (Braintree_Exception_Configuration $e) {
+    drupal_set_message(t("Braintree is missing configuration variables; check your gateway settings"), 'error');
+    return;
+  }  
   
+  // Load the user and order
   global $user;
-  
-  // Load the order
   $order = uc_order_load($order_id);
 
   // Create a Braintree transaction and submit information to create a payment
@@ -65,11 +77,10 @@ function uc_braintree_charge($order_id, $amount, $data) {
       'creditCard' => array(
           'number' => $order->payment_details['cc_number'],
           'expirationDate' => $order->payment_details['cc_exp_month'] . "/" . $order->payment_details['cc_exp_year'],
-          'cardholderName' => 'The Cardholder',
           'cvv' => $order->payment_details['cc_cvv']
       )
   ));
-  
+
   $success = $response->success;
 
   // If payment was successful, add comment
