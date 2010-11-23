@@ -65,11 +65,12 @@ function uc_braintree_charge($order_id, $amount, $data) {
     // Load the user and order
     global $user;
     $order = uc_order_load($order_id);
-
+   
     // Create a Braintree transaction and submit information to create a payment
     $response = Braintree_Transaction::sale(array(
         'amount' => $amount,
         'creditCard' => array(
+            'cardholderName' => $order->payment_details['cc_owner'],
             'number' => $order->payment_details['cc_number'],
             'expirationDate' => $order->payment_details['cc_exp_month'] . "/" . $order->payment_details['cc_exp_year'],
             'cvv' => $order->payment_details['cc_cvv']
@@ -88,7 +89,7 @@ function uc_braintree_charge($order_id, $amount, $data) {
       uc_order_comment_save($order_id, $user->uid, $message, 'admin');
     } else {
       // Output appopriate error if credit card invalid
-      $message = t('Credit card charge failed.');
+      $message = t('Credit card charge failed: ' . $response->errors);
       uc_order_comment_save($order_id, $user->uid, $message, 'admin');
       drupal_set_message(t($response->errors), 'error');
     }
