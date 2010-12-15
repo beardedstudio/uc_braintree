@@ -87,11 +87,22 @@ function uc_braintree_charge($order_id, $amount, $data) {
       );
       $message = t('Credit card charged: !amount', array('!amount' => uc_price($amount, $context)));
       uc_order_comment_save($order_id, $user->uid, $message, 'admin');
-    } else {
-      // Output appopriate error if credit card invalid
-      $message = t('Credit card charge failed: ' . $response->errors);
-      uc_order_comment_save($order_id, $user->uid, $message, 'admin');
-      drupal_set_message(t($response->errors), 'error');
+    } else {      
+      
+      if ($response->transaction->processorResponseCode != NULL) {
+        // Handle processor response codes appropriately
+        $message = "Error " . $response->transaction->processorResponseCode . ": " . $response->transaction->processorResponseText;
+        drupal_set_message(t($message), 'error');
+        
+        // Log order comment
+        uc_order_comment_save($order_id, $user->uid, $message, 'admin');
+      } else {        
+        // Handle validation errors
+        foreach($response->errors->deepAll() AS $error) {
+          drupal_set_message(t($error->message), 'error');
+        }
+      }
+      
     }
 
     // Return result to have payment or error recorded
